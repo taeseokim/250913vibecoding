@@ -1,4 +1,132 @@
+# app.py
 import streamlit as st
-st.title('나의 첫 웹 앱')
-st.write('이걸 내가 만들었다고?!')
-{"name":"mbti\_study\_tips","type":"code/python","content":"import streamlit as st\n\n# 페이지 기본 설정\nst.set\_page\_config(page\_title="MBTI 공부법 추천기 ✨", page\_icon="📚", layout="centered")\n\n# 제목\nst.title("📖 MBTI 맞춤 공부법 추천기 🎉")\nst.write("👉 MBTI 유형을 선택하면, 당신에게 찰떡같이 맞는 공부법을 추천해드려요! 🚀")\n\n# MBTI 리스트\nmbti\_types = \[\n    "ISTJ", "ISFJ", "INFJ", "INTJ",\n    "ISTP", "ISFP", "INFP", "INTP",\n    "ESTP", "ESFP", "ENFP", "ENTP",\n    "ESTJ", "ESFJ", "ENFJ", "ENTJ"\n]\n\n# MBTI별 공부법 추천\ntips = {\n    "ISTJ": "📅 계획표 작성 → 하나씩 체크 ✅",\n    "ISFJ": "🕯️ 조용한 공간에서 정리하며 공부 📝",\n    "INFJ": "🌌 의미와 큰 그림을 잡으며 공부 ✨",\n    "INTJ": "🎯 목표 설정 + 전략적 접근 📊",\n    "ISTP": "🛠️ 직접 실습하며 체득 📚",\n    "ISFP": "🎶 음악과 함께 감성적으로 🌿",\n    "INFP": "💖 가치와 연결하며 몰입 📖",\n    "INTP": "🧠 원리와 논리 구조 파악 🔍",\n    "ESTP": "⏱️ 타이머로 도전처럼 공부 🔥",\n    "ESFP": "👯 스터디 그룹과 즐겁게 🎤",\n    "ENFP": "🌈 다양한 자료 활용 📘",\n    "ENTP": "⚡ 토론으로 확장 🗣️",\n    "ESTJ": "📋 루틴과 성과 확인 🏆",\n    "ESFJ": "👩‍🏫 설명하며 학습 🤝",\n    "ENFJ": "💡 함께 리드하며 동기부여 ⬆️",\n    "ENTJ": "🏔️ 장기 계획 + 성취 목표 📈"\n}\n\n# 선택 박스\nselected = st.selectbox("✨ 내 MBTI 선택하기", mbti\_types)\n\n# 버튼 클릭 시 추천 결과 출력\nif st.button("🚀 공부법 추천 받기"):\n    st.balloons()  # 풍선 효과\n    st.success(f"{selected} 유형에게 추천하는 공부법은...")\n    st.markdown(f"## {tips\[selected]}")\n    st.snow()  # 눈 효과\n\n# 푸터\nst.write("---")\nst.caption("Made with ❤️ & Streamlit ✨")"}
+import pandas as pd
+import altair as alt
+from pathlib import Path
+
+st.set_page_config(page_title="MBTI Top 10 by Country", layout="wide")
+st.title("MBTI 유형별 비율 상위 10개 국가 시각화")
+st.caption("동일 폴더의 countriesMBTI_16types.csv를 읽어옵니다. (Country + 16 MBTI 컬럼, 값은 0~1 비율)")
+
+CSV_NAME = "countriesMBTI_16types.csv"
+csv_path = Path(__file__).parent / CSV_NAME
+
+@st.cache_data
+def load_df(path: Path):
+    df = pd.read_csv(path)
+    return df
+
+def validate_df(df: pd.DataFrame):
+    if "Country" not in df.columns:
+        st.error("❌ 'Country' 열이 없습니다. (국가명을 담은 'Country' 열이 필요합니다.)")
+        return None
+
+    mbti_cols = [
+        "INFJ","ISFJ","INTP","ISFP","ENTP","INFP","ENTJ","ISTP",
+        "INTJ","ESFP","ESTJ","ENFP","ESTP","ISTJ","ENFJ","ESFJ"
+    ]
+    missing = [c for c in mbti_cols if c not in df.columns]
+    if missing:
+        st.error(f"❌ 다음 MBTI 열이 누락되었습니다: {missing}")
+        return None
+
+    for c in mbti_cols:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    if df[mbti_cols].isnull().any().any():
+        st.warning("⚠️ 일부 MBTI 값이 숫자가 아닙니다. NaN은 0으로 대체합니다.")
+        df[mbti_cols] = df[mbti_cols].fillna(0)
+
+    return df, mbti_cols
+
+def top10_chart(df: pd.DataFrame, col: str):
+    top10 = (
+        df[["Country", col]]
+        .sort_values(col, ascending=False)
+        .head(10)
+        .copy()
+    )
+    top10["rank"] = range(1, len(top10) + 1)
+    top10["percent"] = (top10[col] * 100).round(2)
+
+    highlight = alt.selection_point(fields=["Country"], on="mouseover", nearest=True)
+
+    bars = (
+        alt.Chart(top10)
+        .mark_bar()
+        .encode(
+            x=alt.X(f"{col}:Q", title=f"{col} 비율"),
+            y=alt.Y("Country:N", sort="-x", title="국가"),
+            tooltip=[
+                alt.Tooltip("rank:O", title="순위"),
+                alt.Tooltip("Country:N", title="국가"),
+                alt.Tooltip(f"{col}:Q", title="비율(0~1)"),
+                alt.Tooltip("percent:Q", title="비율(%)"),
+            ],
+            opacity=alt.condition(highlight, alt.value(1), alt.value(0.6)),
+        )
+        .add_params(highlight)
+    )
+
+    text = (
+        alt.Chart(top10)
+        .mark_text(align="left", dx=3)
+        .encode(
+            x=alt.X(f"{col}:Q"),
+            y=alt.Y("Country:N", sort="-x"),
+            text=alt.Text("percent:Q", format=".2f"),
+        )
+    )
+
+    return (bars + text).properties(
+        width=700, height=380, title=f"{col} 상위 10개 국가"
+    ).interactive()
+
+# -------- Run --------
+if not csv_path.exists():
+    st.error(f"❌ CSV 파일을 찾을 수 없습니다: {csv_path.name}\n"
+             "동일 폴더에 파일을 두고 다시 실행하세요.")
+    st.stop()
+
+df_raw = load_df(csv_path)
+validated = validate_df(df_raw)
+if not validated:
+    st.stop()
+df, mbti_cols = validated
+
+with st.sidebar:
+    st.header("옵션")
+    selected_types = st.multiselect(
+        "그래프로 볼 MBTI 유형 선택 (복수 선택 가능)",
+        options=mbti_cols,
+        default=["INFJ"]
+    )
+    show_quality = st.checkbox("데이터 품질 점검 보기", value=False)
+
+if show_quality:
+    st.subheader("데이터 품질 점검")
+    st.write("행/열:", df.shape)
+    sum_series = df[mbti_cols].sum(axis=1)
+    st.write("국가별 16유형 합계 상위 5개(참고)")
+    st.dataframe(
+        pd.DataFrame({"Country": df["Country"], "SumOf16": sum_series.round(4)})
+        .sort_values("SumOf16", ascending=False)
+        .head(5),
+        use_container_width=True
+    )
+    if (sum_series > 1.2).any() or (sum_series < 0.8).any():
+        st.warning("⚠️ 일부 국가는 16유형 합이 1과 다를 수 있습니다(원 데이터 특성/추정치일 수 있음).")
+
+st.subheader("유형별 상위 10개 국가")
+if not selected_types:
+    st.info("사이드바에서 MBTI 유형을 1개 이상 선택하세요.")
+else:
+    tabs = st.tabs(selected_types)
+    for t, tab in zip(selected_types, tabs):
+        with tab:
+            st.altair_chart(top10_chart(df, t), use_container_width=True)
+
+with st.expander("전체 16유형 한 번에 보기", expanded=False):
+    all_tabs = st.tabs(mbti_cols)
+    for t, tab in zip(mbti_cols, all_tabs):
+        with tab:
+            st.altair_chart(top10_chart(df, t), use_container_width=True)
